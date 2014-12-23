@@ -1,0 +1,132 @@
+<html>
+	<head>
+		<!-- Setting the right viewport -->
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+		<style>
+			.hidden {
+				display: none;
+			}
+		</style>
+	</head>
+	<body>
+
+	<button id="btn-login"> ShowLogin </button>
+	<button id="btn-logout" class="hidden"> ShowLogout </button>
+
+	<p>His name is <span id="nick"></span></p>
+	<p>His token is <span id="token"></span></p>
+	<p>His profile is <pre id="profileOrError"></pre></p>
+
+	<!-- jQuery script -->
+	<script src="//code.jquery.com/jquery-1.11.2.min.js"></script>
+	
+	<!-- Auth0Lock script -->
+	<script src="//cdn.auth0.com/js/lock-6.2.min.js"></script>
+
+	<script>
+	/*
+Te voy a pedir que para la reunion veas el codigo de github.com/auth0/lock y pienses como le agregarias soporte para recaptcha si el usuario le pifio mas de 3 veces al password https://developers.google.com/recaptcha/docs/display.
+
+auth0.lock
+soporte para recaptcha
+al 3r intento
+
+----------------------------
+Rendering
+----------------------------
+* En donde Injetar?: strategy:auth0
+
+- por default Auth0Lock.prototype.show el mode es signin
+
+index.js.404 	Auth0Lock.prototype.show  --> nueva option options.retriesWithoutCaptcha: 3
+index.js.530		Auth0Lock.prototype.display  llega callback en arguments[ 1 ]
+  						queda despues del manager en this.options.popupCallback
+
+index.js.653			Auth0Lock.prototype._signinPanel llega callback en arguments[ 1 ].popupCallback
+							refTo: SigninPanel
+								queda callback en signinPanel.options.popupCallback
+
+mode-signin.index.js.304 	SigninPanel.onsubmit
+mode-signin.index.js.355		widget._signin(this)
+index.js.942					Auth0Lock.prototype._signin = function (panel) {
+index.js.							this.$auth0.login(loginOptions);		
+
+Cambios:
+inclusiones: version 1
+- agregar un metodo AuthLock.prototype.loadReCaptcha( done ) {
+  		if this.reCaptchaReady then return
+  		this.reCaptchaReady = done;
+  		incluya dinamicamente incluir al inicio <script src="https://www.google.com/recaptcha/api.js?onload=lock.reCaptchReady&render=explicit" async defer>< /script>
+  	}
+- en setClientConfiguration, o sucribiendose al evento que emite este último,
+  llamar a loadRecaptcha, si aplica a algunas de las estrategias del cliente, para precargar recaptcha.
+
+renderizado:
+- En lib.mode-signin.signin.ejs, agregar debajo de input de pass agregar div oculto para recaptcha 
+
+- EN SigninPanel, agregar estructura para manejo de recaptcha:
+  - recaptcha:{
+	lastUserAccount: '',
+	countDown: 3  ==> cuando llega a cero, se muestra captcha, cuando cambia lastUSerAccount, se reinicializa al valor pasado en options,
+	 o podria venir via strategia.
+  }
+
+( al mostrar recaptcha, blockear otros boton de submit )
+- En SigninPanel.prototype.create chequear si hay que mostrar captcha, si es asi correr el proxy this.grecaptcha.render()
+- En prototype.onsubmit, si countDown > 0 decrementar, y si luego de eso es 0, correr el proxy this.grecaptcha.render()
+  agregar callback de verificacion verifyCallback ( y que ese callback habilite el boton de submit,
+  ademas podria agregar datos de respuesta exitosa de verifyCallback para otro checkeo desde backend )
+
+
+Auth0Lock.prototype._signin agregar a las loginOptions un callback para conteo de recaptcha.countDown.
+----------------------------
+BackEnd
+----------------------------
+----------------------------
+Backoffice
+----------------------------
+	*/
+	$( function () {
+		var
+			$profile = $error = $( '#profileOrError' )
+			$login = $('#btn-login'),
+			$logout = $('#btn-logout');
+
+		var lock = new Auth0Lock('fv5mXCXdeGa6lO3M4uqe5svMZwuE2UOq', 'pelicanorojo.auth0.com');
+		
+		var userProfile = null;
+
+		$login.on( 'click', function() {
+			lock.show({ popup: true }, function( err, profile, token ) {
+				var
+					$profile = $error = $( '#profileOrError' );
+
+				if (err) {
+					// Error callback
+					console.log( 'There was an error' );
+					$error.text( JSON.stringify( err, null, ' ' ) );					
+				} else {
+					console.log( 'OK!!' );
+					// Success calback
+					
+					// Save the JWT token.
+					localStorage.setItem('userToken', token);
+
+					// Save the profile
+					userProfile = profile;
+					$('#nick').text( userProfile.nickname );
+					$profile.text( JSON.stringify( userProfile, null, ' ' ) );
+					$('#token').text( token );
+					$login.hide();
+					$logout.show();
+				}
+			});
+		});
+
+		$logout.on( 'click', function () {
+			lock.logout({ ref: window.location.href });
+		});
+	});
+	</script>
+</body>
+</html>
